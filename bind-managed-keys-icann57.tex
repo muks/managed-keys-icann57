@@ -1,0 +1,168 @@
+\documentclass{beamer}
+\usepackage{hyperref}
+\title{BIND and root key rollover}
+\author{Mukund Sivaraman}
+\institute{Internet Systems Consortium}
+\date{}
+\usenavigationsymbolstemplate{}
+
+\begin{document}
+
+\frame{\titlepage}
+
+\frame
+{
+  \frametitle{Default trust anchors in BIND}
+
+  \begin{itemize}
+
+  \item In BIND, the \textbf{bind.keys} file contains initial/starting
+    trust anchors for the resolver for the \textbf{root zone} and
+    \textbf{DLV}.
+
+  \item When \textbf{dnssec-validation} is set to \textbf{yes}, no
+    default trust anchor is used automatically. When
+    \textbf{dnssec-validation} is set to \textbf{auto}, the keys in
+    \textbf{bind.keys} file are used (for root and DLV only).
+
+  \item For simpler configuration, a non-changeable copy of the default
+    trust anchors is also built into the \textbf{named} program
+    binary. If an external \textbf{bind.keys} file exists, that will
+    have precedence over the built-in copy.
+
+  \item Non-root and non-DLV trust anchors need to be explicitly
+    configured.
+
+  \end{itemize}
+}
+
+\frame
+{
+  \frametitle{Manual trust anchor maintenance}
+
+  \begin{itemize}
+  \item The \textbf{trusted-keys} config option is used to introduce
+    manually maintained trust anchors to \textbf{named}. Such trust
+    anchors are not automatically updated.
+
+  \item Without RFC 5011 feature, when the root key changes the root
+    trust anchors would have to be updated manually, otherwise DNSSEC
+    validation would fail.
+
+  \item Similarly, trust anchors would have to be updated manually for
+    any other starting points of trust (``security roots'') too.
+
+  \item \textbf{bind.keys} (root and DLV) configures itself for RFC 5011
+    automatic trust anchor maintenance (\textbf{managed-keys}).
+
+  \item Other starting points of trust may use manual
+    (\textbf{trusted-keys}) or automatic (\textbf{managed-keys}) trust
+    anchor maintenance.
+
+  \end{itemize}
+}
+
+\frame
+{
+  \frametitle{RFC 5011 in BIND}
+
+  \begin{itemize}
+  \item RFC 5011 feature in BIND is known as \textbf{managed-keys} after
+    the \textbf{named} config option.
+  \item \textbf{managed-keys} can be used for automatic trust anchor
+    maintenance. A zone owner can add a ``stand-by" key to the
+    security-root zone in advance. \textbf{named} would fetch and store
+    the stand-by key, and when the original key was revoked,
+    \textbf{named} would be able to transition smoothly to the new
+    key. It would also recognize that the old key had been revoked, and
+    cease using that key to validate answers.
+  \item Implemented by Evan Hunt in June 2009.
+  \item First released in BIND in 9.7.0.
+  \item Bugs found and fixed over time.
+  \item Some quirks remain.
+  \end{itemize}
+}
+
+\frame
+{
+  \frametitle{Automatic trust anchor maintenance}
+
+  \begin{itemize}
+
+  \item \textbf{bind.keys} provides initial/starting trust anchors as
+    \textbf{managed-keys} that have not been rolled. It is an input file that is
+    \textbf{not modified} by \textbf{named}.
+
+  \item \textbf{named} creates a corresponding
+    \textbf{managed-keys.bind} or \textbf{viewname.mkeys} database file
+    which contains the automatically managed keys database. This
+    database file is maintained by \textbf{named} and has keys in
+    various states, including current trust anchors. \textbf{named} does
+    not use key material from \textbf{bind.keys} or any other
+    \textbf{managed-keys} statements after creating the database, but
+    uses them as a list of security roots.
+
+  \item After a root key rollover, the keys in \textbf{bind.keys} may
+    become stale and invalid. However, the resolver continues to work
+    properly because the trust anchors from the managed keys database
+    are used. This continues even after a restart of the resolver
+    process.
+
+  \end{itemize}
+}
+
+\frame
+{
+  \frametitle{Quirks}
+
+  \begin{itemize}
+  \item \textbf{Storing managed key database as zone files}
+    \begin{itemize}
+      \item \textbf{named} stores the managed key database in master
+        files.
+      \item Master file was used because it is an existing journaled
+        serialization format in BIND.
+      \item A private-use RRTYPE code 65533 is used for a
+        \textbf{KEYDATA} RDATA type to represent managed trust anchor
+        fields (refresh time, add hold-down time, remove hold-down time
+        and DNSKEY fields) in such master files.
+      \item In hindsight, this was not a good idea and if we were to
+        implement it from scratch today, we'd use a real database
+        library. Why was it not a good idea? :)
+    \end{itemize}
+  \item \textbf{Keeping \textbf{bind.keys} up to date when adding new views}
+    \begin{itemize}
+    \item After a root key rollover, the contents of \textbf{bind.keys}
+      may become stale, though the resolver continues to work.
+    \item When a new view is added, the resolver will try to use the
+      keys from \textbf{bind.keys} as the initial/starting root trust
+      anchors. So, it's important to check that the keys in
+      \textbf{bind.keys} are current when adding a new view.
+    \end{itemize}
+  \end{itemize}
+}
+
+\frame
+{
+  \frametitle{Recommendations}
+
+  \begin{itemize}
+  \item Visit Warren Kumari's website \textbf{http://keyroll.systems/}
+    for resources on testing key rollover.
+
+  \item If you are setting up a new BIND resolver, update the
+    \textbf{bind.keys} file to the latest copy as it provides the
+    initial/starting root trust anchors (if the BIND installation
+    pre-dates any root key rollovers).
+
+  \item We publish the \textbf{bind.keys} file at
+    \textbf{https://www.isc.org/bind-keys} and it will be updated when
+    additional (future) root keys are available for distribution
+    (expected in January 2017?). The file also ships as part of the BIND
+    source code and new releases will automatically have the latest copy
+    of the file.
+  \end{itemize}
+
+}
+
+\end{document}
